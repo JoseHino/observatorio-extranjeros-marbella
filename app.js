@@ -32,6 +32,23 @@
     url: (D.argos && D.argos.pdf) || 'https://www.juntadeandalucia.es/servicioandaluzdeempleo/web/argos/web/es/ARGOS/Publicaciones/publicaciones.html' };
   var FUENTE_SEPE = { txt: 'SEPE · Paro registrado por municipios', url: 'https://www.sepe.es/HomeSepe/que-es-el-sepe/estadisticas/datos-estadisticos/municipios.html' };
   var FUENTE_CONC = { txt: 'Concejalía de Extranjeros Residentes · informes anuales', url: 'https://www.marbella.es/' };
+  var FUENTE_NAC = { txt: 'INE · Censo anual: país de nacimiento', url: 'https://www.ine.es/jaxiT3/Tabla.htm?t=66430' };
+  var FUENTE_MIG = { txt: 'INE · Estadística de Migraciones y Cambios de Residencia', url: 'https://www.ine.es/jaxiT3/Tabla.htm?t=69767' };
+  var FUENTE_MAT = { txt: 'INE · Estadística de Matrimonios', url: 'https://www.ine.es/jaxiT3/Tabla.htm?t=53668' };
+  var FUENTE_SEC = { txt: 'INE · Censo anual por sección censal', url: 'https://www.ine.es/jaxiT3/Tabla.htm?t=69214' };
+  var FUENTE_ADRH = { txt: 'INE · Atlas de distribución de renta de los hogares', url: 'https://www.ine.es/jaxiT3/Tabla.htm?t=31114' };
+  var FUENTE_AFIL = { txt: 'IECA · Afiliaciones por municipio de trabajo y nacionalidad',
+    url: 'https://www.juntadeandalucia.es/institutodeestadisticaycartografia/badea/operaciones/consulta/anual/861?CodOper=b3_291&codConsulta=861' };
+  var FUENTE_TUR = { txt: 'INE · Medición del turismo con teléfonos móviles (vía Dataestur)', url: 'https://www.dataestur.es/' };
+  var FUENTE_OPI = { txt: 'Observatorio Permanente de la Inmigración · documentación de residencia', url: 'https://www.inclusion.gob.es/web/opi/estadisticas/catalogo/stock_documentacion' };
+  var FUENTE_MIVAU = { txt: 'Ministerio de Vivienda · transacciones inmobiliarias', url: 'https://apps.fomento.gob.es/BoletinOnline2/?nivel=2&orden=34000000' };
+  var CHIP_TRIM = { txt: 'Trimestral', tipo: 'live' };
+  var CHIP_PROV = { txt: 'Provincia de Málaga', tipo: 'warn' };
+  var CHIP_EXP = { txt: 'Experimental', tipo: 'warn' };
+
+  /* Distritos censales del INE: la numeración coincide con la de los cuatro
+     distritos municipales (comprobado por la posición de sus secciones). */
+  var DIST = { '01': 'Marbella', '02': 'San Pedro Alcántara', '03': 'Nueva Andalucía', '04': 'Las Chapas' };
 
   var CHIP_ANUAL = { txt: 'Anual', tipo: 'live' };
   var CHIP_INTERNO = { txt: 'Dato interno', tipo: 'brand' };
@@ -70,6 +87,23 @@
       v: xs.map(function (t) { return m[t]; }),
       pct: xs.map(function (t) { return tot[t] ? +(m[t] / tot[t] * 100).toFixed(2) : null; })
     };
+  })();
+
+  /* País de nacimiento (INE): nacidos fuera = total − nacidos en España. */
+  var NAC = (function () {
+    var n = D.nacimiento || { x: [] };
+    var xs = n.x || [];
+    var fuera = xs.map(function (_, i) {
+      return n.Total && n['España'] && n.Total[i] != null && n['España'][i] != null ? n.Total[i] - n['España'][i] : null;
+    });
+    var u = xs.length - 1, cu = (CS.x || []).indexOf(xs[u]);
+    var alias = function (k) { return k === 'República Dominicana' ? 'Rep. Dominicana' : k; };
+    var comparar = Object.keys(n).filter(function (k) {
+      return k !== 'x' && k !== 'Total' && k !== 'España' && !/^Otros/.test(k) && (CS.paises || {})[alias(k)];
+    }).map(function (k) { return [k, n[k][u], cu >= 0 ? CS.paises[alias(k)][cu] : null]; })
+      .sort(function (a, b) { return (b[1] || 0) - (a[1] || 0); });
+    return { x: xs, nacidosFuera: fuera, comparar: comparar,
+      pct: n.Total ? fuera[u] / n.Total[u] * 100 : null, ultimo: fuera[u] };
   })();
 
   /* Paro total del SEPE a 31 de diciembre de cada año, para el peso del paro
@@ -120,7 +154,8 @@
           extra: [
             { label: 'Altas netas en el último año', valor: tU - tP, formato: function (v) { return '+' + F.num(v) + ' <small style="font-size:13px;color:var(--ink-mut)">(' + F.signo(varPct(tU, tP), 1) + ' %)</small>'; } },
             { label: 'Peso en la población (INE, 1-1-' + ult(CS.x) + ')', valor: ineTot ? ineU / ineTot * 100 : null, formato: function (v) { return F.pct(v, 1); } },
-            { label: 'Nacionalidades distintas', valor: nNacionalidades }
+            { label: 'Nacionalidades distintas', valor: nNacionalidades },
+            { label: 'Nacidos en el extranjero (INE)', valor: NAC.ultimo, formato: function (v) { return F.num(v) + ' <small style="font-size:13px;color:var(--ink-mut)">(' + F.pct(NAC.pct, 1) + ')</small>'; } }
           ]
         },
         kpis: kpis,
@@ -170,6 +205,209 @@
             chips: [CHIP_ANUAL], fuente: FUENTE_CENSO,
             spec: { type: 'stack', xType: 'anual', x: anios, yFormat: 'num', xLabel: 'Año',
               series: [{ name: 'Mujeres', data: CS.ext_mujeres }, { name: 'Hombres', data: CS.ext_hombres }] }
+          },
+          {
+            titulo: 'Nacidos en el extranjero y de nacionalidad extranjera', sub: 'Población a 1 de enero · dos formas de contar a la población de origen extranjero',
+            chips: [CHIP_ANUAL], fuente: FUENTE_NAC, ancho: 'full',
+            nota: 'La diferencia entre las dos líneas son, sobre todo, personas nacidas fuera que ya tienen la nacionalidad española.',
+            spec: { type: 'line', xType: 'anual', x: NAC.x, yFormat: 'num', xLabel: 'Año', desdeCero: false,
+              series: [{ name: 'Nacidos en el extranjero', data: NAC.nacidosFuera },
+                       { name: 'Nacionalidad extranjera', data: NAC.x.map(function (t) { var i = (CS.x || []).indexOf(t); return i >= 0 ? CS.extranjera[i] : null; }) }] }
+          },
+          {
+            titulo: 'País de nacimiento frente a nacionalidad', sub: 'Población a 1 de enero de ' + ult(NAC.x) + ' · principales países que publica el INE',
+            chips: [CHIP_ANUAL], fuente: FUENTE_NAC, ancho: 'full', alto: 'tall',
+            nota: 'Cuando la barra de nacidos supera a la de nacionalidad, hay residentes de ese origen que ya son españoles.',
+            spec: { type: 'barh', x: NAC.comparar.map(function (r) { return r[0]; }), yFormat: 'num', xLabel: 'País',
+              series: [{ name: 'Nacidos en el país', data: NAC.comparar.map(function (r) { return r[1]; }) },
+                       { name: 'Con su nacionalidad', data: NAC.comparar.map(function (r) { return r[2]; }) }] }
+          }
+        ]
+      };
+    }
+  });
+
+  /* --------------------------------------------- 1b. Barrios (secciones) -- */
+  var SECC = (function () {
+    var s = (D.secciones || {}), cen = s.censo || {}, ad = s.adrh || {};
+    var filas = {};
+    Object.keys(cen).forEach(function (k) {
+      var c = cen[k], n = c.x.length - 1;
+      var pctDe = function (i) { return c.tot[i] ? c.ext[i] / c.tot[i] * 100 : null; };
+      filas[k] = {
+        sec: k, dist: k.slice(0, 2), anio: c.x[n], x: c.x,
+        tot: c.tot[n], ext: c.ext[n], pct: pctDe(n),
+        pctIni: pctDe(0), anioIni: c.x[0]
+      };
+    });
+    Object.keys(ad).forEach(function (k) {
+      var a = ad[k], f = filas[k] || (filas[k] = { sec: k, dist: k.slice(0, 2) });
+      if (a.x && a.pct_ext) {
+        var i15 = a.x.indexOf('2015');
+        f.adrh15 = i15 >= 0 ? a.pct_ext[i15] : null;
+        f.adrhUlt = a.pct_ext[a.pct_ext.length - 1];
+        f.adrhAnio = a.x[a.x.length - 1];
+      }
+      if (a.renta) {
+        var ks = Object.keys(a.renta).sort();
+        f.renta = a.renta[ks[ks.length - 1]]; f.rentaAnio = ks[ks.length - 1];
+      }
+    });
+    /* Agregado por distrito censal, año a año. */
+    var anios = [];
+    Object.keys(cen).forEach(function (k) { cen[k].x.forEach(function (t) { if (anios.indexOf(t) < 0) anios.push(t); }); });
+    anios.sort();
+    var porDist = {};
+    Object.keys(DIST).forEach(function (d) {
+      porDist[d] = anios.map(function (t) {
+        var e = 0, tt = 0;
+        Object.keys(cen).forEach(function (k) {
+          if (k.slice(0, 2) !== d) return;
+          var i = cen[k].x.indexOf(t);
+          if (i >= 0) { e += cen[k].ext[i] || 0; tt += cen[k].tot[i] || 0; }
+        });
+        return { ext: e, tot: tt };
+      });
+    });
+    return { filas: filas, anios: anios, porDist: porDist };
+  })();
+
+  var IND_MAPA = {
+    pct:    { txt: '% de extranjeros (Censo, 1 de enero de ' + (ult(SECC.anios) || '') + ')', f: function (r) { return r.pct; }, fmt: function (v) { return F.pct(v, 1); }, tipo: 'seq' },
+    ext:    { txt: 'Número de extranjeros (Censo ' + (ult(SECC.anios) || '') + ')', f: function (r) { return r.ext; }, fmt: function (v) { return F.num(v); }, tipo: 'seq' },
+    dif:    { txt: 'Cambio del % de extranjeros ' + (SECC.anios[0] || '') + '–' + (ult(SECC.anios) || '') + ' (puntos)', f: function (r) { return r.pct != null && r.pctIni != null ? r.pct - r.pctIni : null; }, fmt: function (v) { return F.signo(v, 1) + ' p.p.'; }, tipo: 'div' },
+    adrh15: { txt: '% de extranjeros en 2015 (Atlas de renta)', f: function (r) { return r.adrh15; }, fmt: function (v) { return F.pct(v, 1); }, tipo: 'seq' },
+    renta:  { txt: 'Renta neta media por persona (Atlas de renta)', f: function (r) { return r.renta; }, fmt: function (v) { return F.eur(v); }, tipo: 'seq' }
+  };
+  var COL_SEQ = ['#e3f1f5', '#a9d6e3', '#62b0c9', '#24839f', '#0b4f63'];
+  var COL_DIV = ['#2a78d6', '#9cc3ef', '#e9ecef', '#f5b08f', '#eb6834'];
+  var MAPA = { ind: 'pct', mapa: null, capa: null, tiles: null };
+
+  function cortes(vals, tipo) {
+    var v = vals.filter(function (x) { return x != null && isFinite(x); }).sort(function (a, b) { return a - b; });
+    if (!v.length) return [];
+    if (tipo === 'div') {
+      var m = Math.max(Math.abs(v[0]), Math.abs(v[v.length - 1])) || 1;
+      return [-m * 0.6, -m * 0.2, m * 0.2, m * 0.6];
+    }
+    return [0.2, 0.4, 0.6, 0.8].map(function (q) { return v[Math.min(v.length - 1, Math.floor(q * v.length))]; });
+  }
+  function clase(v, cs) { var i = 0; while (i < cs.length && v >= cs[i]) i++; return i; }
+
+  function pintarMapa() {
+    var host = document.getElementById('mb-mapa');
+    if (!host || !window.L || !window.SECCIONES) return;
+    var oscuro = document.documentElement.getAttribute('data-theme') === 'dark' ||
+      (!document.documentElement.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+    if (!MAPA.mapa || MAPA.mapa.getContainer() !== host) {
+      MAPA.mapa = L.map(host, { scrollWheelZoom: false, zoomControl: true, attributionControl: true });
+      MAPA.tiles = null; MAPA.capa = null; MAPA.encuadrado = false;
+    }
+    var url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_' + (oscuro ? 'Dark' : 'Light') + '_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+    if (MAPA.tiles) MAPA.mapa.removeLayer(MAPA.tiles);
+    MAPA.tiles = L.tileLayer(url, { maxZoom: 16, attribution: 'Teselas &copy; Esri · Secciones censales &copy; INE' }).addTo(MAPA.mapa);
+    var ind = IND_MAPA[MAPA.ind];
+    var vals = Object.keys(SECC.filas).map(function (k) { return ind.f(SECC.filas[k]); });
+    var cs = cortes(vals, ind.tipo), pal = ind.tipo === 'div' ? COL_DIV : COL_SEQ;
+    if (MAPA.capa) MAPA.mapa.removeLayer(MAPA.capa);
+    var borde = oscuro ? '#131a24' : '#ffffff';
+    MAPA.capa = L.geoJSON(window.SECCIONES, {
+      style: function (f) {
+        var r = SECC.filas[f.properties.sec] || {}, v = ind.f(r);
+        return { color: borde, weight: 1, fillOpacity: v == null ? 0.15 : 0.78,
+                 fillColor: v == null ? '#9aa5b1' : pal[clase(v, cs)] };
+      },
+      onEachFeature: function (f, capa) {
+        var r = SECC.filas[f.properties.sec] || {};
+        capa.bindTooltip('<b>Sección ' + esc(f.properties.sec) + '</b> · distrito ' + esc(DIST[r.dist] || r.dist || '') +
+          '<br>Población: ' + F.num(r.tot) + ' · extranjeros: ' + F.num(r.ext) + ' (' + F.pct(r.pct, 1) + ')' +
+          '<br>Cambio ' + esc(r.anioIni || '') + '–' + esc(r.anio || '') + ': ' + (r.pct != null && r.pctIni != null ? F.signo(r.pct - r.pctIni, 1) + ' p.p.' : '—') +
+          '<br>% extranjeros 2015 (Atlas): ' + F.pct(r.adrh15, 1) +
+          '<br>Renta neta por persona ' + esc(r.rentaAnio || '') + ': ' + F.eur(r.renta),
+          { sticky: true, className: 'mb-tip' });
+        capa.on('mouseover', function () { capa.setStyle({ weight: 2.5, color: oscuro ? '#e8edf3' : '#0f1b2d' }); });
+        capa.on('mouseout', function () { MAPA.capa.resetStyle(capa); });
+      }
+    }).addTo(MAPA.mapa);
+    if (!MAPA.encuadrado) { MAPA.mapa.fitBounds(MAPA.capa.getBounds(), { padding: [10, 10] }); MAPA.encuadrado = true; }
+    var ley = document.getElementById('mb-ley');
+    if (ley) {
+      var et = [];
+      for (var i = 0; i < pal.length; i++) {
+        var a = i === 0 ? null : cs[i - 1], b = i < cs.length ? cs[i] : null;
+        et.push('<span><i style="background:' + pal[i] + '"></i>' + (a == null ? '< ' + ind.fmt(b) : (b == null ? '≥ ' + ind.fmt(a) : ind.fmt(a))) + '</span>');
+      }
+      ley.innerHTML = et.join('');
+    }
+    setTimeout(function () { if (MAPA.mapa) MAPA.mapa.invalidateSize(); }, 60);
+  }
+  var _repAnt = Obs.mapasRepintar;
+  Obs.mapasRepintar = function () { if (_repAnt) _repAnt(); if (MAPA.mapa && document.getElementById('mb-mapa')) pintarMapa(); };
+  document.addEventListener('change', function (ev) {
+    var s = ev.target.closest && ev.target.closest('select[data-mapa-ind]');
+    if (!s) return;
+    MAPA.ind = s.value; pintarMapa();
+  });
+
+  SECCIONES.push({
+    id: 'barrios', nombre: 'Barrios',
+    titulo: 'Dónde viven: mapa por secciones censales',
+    desc: 'Las ' + Object.keys(SECC.filas).length + ' secciones censales de Marbella con la población extranjera del Censo anual del INE y, para ver la evolución larga y el nivel de renta, el Atlas de distribución de renta del INE. Pase el ratón por cada sección para ver su ficha.',
+    render: function () {
+      var fs = Object.keys(SECC.filas).map(function (k) { return SECC.filas[k]; }).filter(function (r) { return r.pct != null; });
+      var top = fs.slice().sort(function (a, b) { return b.pct - a.pct; }).slice(0, 15);
+      var sube = fs.filter(function (r) { return r.pctIni != null; }).sort(function (a, b) { return (b.pct - b.pctIni) - (a.pct - a.pctIni); }).slice(0, 15);
+      var ultA = SECC.anios.length - 1;
+      var dKeys = Object.keys(DIST);
+      var distPct = dKeys.map(function (d) { return { name: DIST[d], data: SECC.porDist[d].map(function (o) { return o.tot ? +(o.ext / o.tot * 100).toFixed(1) : null; }) }; });
+      var distU = dKeys.map(function (d) { return SECC.porDist[d][ultA]; });
+      var opciones = Object.keys(IND_MAPA).map(function (k) {
+        return '<option value="' + k + '"' + (k === MAPA.ind ? ' selected' : '') + '>' + esc(IND_MAPA[k].txt) + '</option>';
+      }).join('');
+      /* Clase propia y no .obs-card: el kit empareja sus tarjetas por posición y
+         una .obs-card de más desplazaría el dibujo de las gráficas. */
+      var mapa = '<div class="obs-grid cols-1"><article class="mb-card">' +
+        '<div class="obs-card-head"><div class="t"><h3>Mapa por secciones censales</h3><div class="cs">Elija el indicador que colorea el mapa</div></div>' +
+        '<label class="obs-card-ctrl"><span>Indicador</span><select class="obs-select" data-mapa-ind style="max-width:min(380px,60vw)">' + opciones + '</select></label></div>' +
+        '<div class="mb-pie"><span class="mb-ley" id="mb-ley"></span></div>' +
+        '<div class="mb-mapa" id="mb-mapa"></div>' +
+        '<div class="obs-card-foot"><span class="obs-chip live">Anual</span><span>Fuente: <a href="' + FUENTE_SEC.url + '" target="_blank" rel="noopener">INE · Censo anual por sección censal</a>, <a href="' + FUENTE_ADRH.url + '" target="_blank" rel="noopener">INE · Atlas de distribución de renta</a> y cartografía de secciones del INE (1-1-2025). Colores por quintiles: cada tramo agrupa un 20 % de las secciones.</span></div>' +
+        '</article></div>';
+      setTimeout(pintarMapa, 0);
+      var padron = (C.distritos && C.distritos.valores) ? C.distritos : null;
+      return {
+        nota: mapa,
+        kpis: dKeys.map(function (d, i) {
+          var o = distU[i], p = SECC.porDist[d][0];
+          /* Sin delta: el kit lo rotula en % y aquí el cambio es en puntos. */
+          return { label: DIST[d] + ' · % extranjeros (' + SECC.anios[ultA] + ')', valor: o.tot ? o.ext / o.tot * 100 : null, dec: 1, unidad: '%', formato: F.num,
+                   serie: SECC.porDist[d].map(function (x) { return x.tot ? x.ext / x.tot * 100 : null; }) };
+        }),
+        cards: [
+          {
+            titulo: 'Secciones con más peso de población extranjera', sub: '% de extranjeros a 1 de enero de ' + SECC.anios[ultA] + ' · 15 primeras',
+            chips: [CHIP_ANUAL], fuente: FUENTE_SEC, alto: 'tall',
+            spec: { type: 'barh', x: top.map(function (r) { return r.sec + ' · ' + DIST[r.dist]; }), yFormat: 'pct', xLabel: 'Sección',
+              series: [{ name: '% extranjeros', data: top.map(function (r) { return +r.pct.toFixed(1); }) }] }
+          },
+          {
+            titulo: 'Secciones donde más ha crecido', sub: 'Cambio del % de extranjeros entre ' + SECC.anios[0] + ' y ' + SECC.anios[ultA] + ' (puntos)',
+            chips: [CHIP_ANUAL], fuente: FUENTE_SEC, alto: 'tall',
+            spec: { type: 'barh', x: sube.map(function (r) { return r.sec + ' · ' + DIST[r.dist]; }), yFormat: 'dec1', xLabel: 'Sección',
+              series: [{ name: 'Puntos', data: sube.map(function (r) { return +(r.pct - r.pctIni).toFixed(1); }) }] }
+          },
+          {
+            titulo: 'Peso de la población extranjera por distrito', sub: 'Suma de las secciones de cada distrito · Censo anual del INE',
+            chips: [CHIP_ANUAL], fuente: FUENTE_SEC,
+            spec: { type: 'line', xType: 'anual', x: SECC.anios, yFormat: 'pct', xLabel: 'Año', desdeCero: false, series: distPct }
+          },
+          {
+            titulo: 'Extranjeros por distrito: INE frente a padrón municipal', sub: 'INE a 1-1-' + SECC.anios[ultA] + ' · padrón municipal a ' + (padron ? padron.fechas[padron.valores.length - 2] : '—'),
+            chips: [CHIP_ANUAL, CHIP_INTERNO], fuente: FUENTE_SEC,
+            nota: 'Conceptos distintos: el INE depura las inscripciones caducadas. La comparación muestra en qué distrito es mayor la diferencia.',
+            spec: { type: 'bar', xType: 'cat', x: dKeys.map(function (d) { return DIST[d]; }), yFormat: 'num', xLabel: 'Distrito', xTodas: true,
+              series: [{ name: 'INE 1-1-' + SECC.anios[ultA], data: distU.map(function (o) { return o.ext; }) }].concat(
+                padron ? [{ name: 'Padrón ' + padron.fechas[padron.valores.length - 2], data: padron.valores[padron.valores.length - 2] }] : []) }
           }
         ]
       };
@@ -240,6 +478,56 @@
     }
   });
 
+  /* ------------------------------------------------ 2b. Movimientos ----- */
+  var MG = D.migraciones || { x: [] };
+  var MM = D.matrimonios_mixtos || { x: [], v: [] };
+  SECCIONES.push({
+    id: 'movimientos', nombre: 'Llegadas y salidas',
+    titulo: 'Llegadas, salidas y saldo migratorio',
+    desc: 'Altas y bajas en el padrón por cambio de residencia (Estadística de Migraciones y Cambios de Residencia del INE). El <b>saldo exterior</b> es la diferencia entre quienes llegan desde otro país y quienes se van al extranjero; el <b>saldo interior</b>, entre quienes llegan desde otro municipio de España y quienes se van a otro municipio. Incluye a personas de cualquier nacionalidad.',
+    render: function () {
+      var u = (MG.x || []).length - 1;
+      var k = function (c) { return (MG[c] || [])[u]; };
+      var kp = function (c) { return (MG[c] || [])[u - 1]; };
+      return {
+        kpis: [
+          { label: 'Llegadas desde el extranjero (' + MG.x[u] + ')', valor: k('inmig_extranjero'), delta: varPct(k('inmig_extranjero'), kp('inmig_extranjero')), deltaRef: 'vs ' + MG.x[u - 1], serie: MG.inmig_extranjero },
+          { label: 'Salidas al extranjero (' + MG.x[u] + ')', valor: k('emig_extranjero'), delta: varPct(k('emig_extranjero'), kp('emig_extranjero')), deltaRef: 'vs ' + MG.x[u - 1], invertir: true, serie: MG.emig_extranjero },
+          { label: 'Saldo con el extranjero', valor: k('saldo_exterior'), formato: function (v) { return F.signo(v, 0); }, serie: MG.saldo_exterior },
+          { label: 'Saldo con el resto de España', valor: k('saldo_interior'), formato: function (v) { return F.signo(v, 0); }, serie: MG.saldo_interior }
+        ],
+        cards: [
+          {
+            titulo: 'Llegadas desde el extranjero y salidas al extranjero', sub: 'Personas que cambian su residencia, por año',
+            chips: [CHIP_ANUAL], fuente: FUENTE_MIG,
+            spec: { type: 'bar', xType: 'anual', x: MG.x, yFormat: 'num', xLabel: 'Año', xTodas: true,
+              series: [{ name: 'Llegadas', data: MG.inmig_extranjero }, { name: 'Salidas', data: MG.emig_extranjero }] }
+          },
+          {
+            titulo: 'Saldo migratorio exterior e interior', sub: 'Marbella gana población con el extranjero y la pierde con el resto de España',
+            chips: [CHIP_ANUAL], fuente: FUENTE_MIG,
+            /* El kit arranca las barras en cero; con saldos negativos hay que
+               bajar el suelo del eje o el saldo interior no se ve. */
+            spec: { type: 'bar', xType: 'anual', x: MG.x, yFormat: 'num', xLabel: 'Año', xTodas: true,
+              yMin: Math.min(0, Math.floor(Math.min.apply(null, (MG.saldo_interior || [0]).concat(MG.saldo_exterior || [0])) / 1000) * 1000),
+              series: [{ name: 'Saldo exterior', data: MG.saldo_exterior }, { name: 'Saldo interior', data: MG.saldo_interior }] }
+          },
+          {
+            titulo: 'Llegadas desde otros municipios de España', sub: 'Por nacionalidad de quien se empadrona en Marbella',
+            chips: [CHIP_ANUAL], fuente: FUENTE_MIG,
+            spec: { type: 'stack', xType: 'anual', x: MG.x, yFormat: 'num', xLabel: 'Año', xTodas: true,
+              series: [{ name: 'Española', data: MG.inmig_intermun_espanola }, { name: 'Extranjera', data: MG.inmig_intermun_extranjera }] }
+          },
+          {
+            titulo: 'Matrimonios con al menos un cónyuge extranjero', sub: 'Matrimonios de residentes en Marbella, por año',
+            chips: [CHIP_ANUAL], fuente: FUENTE_MAT,
+            spec: { type: 'bar', xType: 'anual', x: MM.x, yFormat: 'num', xLabel: 'Año', xTodas: true, series: [{ name: 'Matrimonios', data: MM.v }] }
+          }
+        ]
+      };
+    }
+  });
+
   /* ----------------------------------------------------------- 3. Empleo -- */
   SECCIONES.push({
     id: 'empleo', nombre: 'Empleo',
@@ -252,14 +540,30 @@
         var j = serieLarga.x.indexOf(t);
         return j >= 0 && serieLarga.v[j] ? +(A.paro[i] / serieLarga.v[j] * 100).toFixed(2) : null;
       });
+      var AF = D.afiliacion || { x: [] };
+      var afPct = function (amb) { return (AF.x || []).map(function (_, i) { var e = AF[amb + '_ext'][i], t = AF[amb + '_total'][i]; return e != null && t ? +(e / t * 100).toFixed(1) : null; }); };
+      var afIdx12 = (AF.x || []).indexOf((function () { var t = ult(AF.x) || ''; return (+t.slice(0, 4) - 1) + t.slice(4); })());
       return {
         kpis: [
+          { label: 'Extranjeros afiliados que trabajan en Marbella (' + Obs.periodo(ult(AF.x), 'mes') + ')', valor: ult(AF.marbella_ext),
+            delta: afIdx12 >= 0 ? varPct(ult(AF.marbella_ext), AF.marbella_ext[afIdx12]) : null, deltaRef: 'interanual', serie: (AF.marbella_ext || []).slice(-24) },
+          { label: 'Peso de los extranjeros en los afiliados', valor: ult(afPct('marbella')), unidad: '%', dec: 1, formato: F.num, serie: afPct('marbella').slice(-24) },
           { label: 'Paro registrado extranjero (31-12-' + ult(xs) + ')', valor: ult(A.paro), delta: varPct(ult(A.paro), pen(A.paro)), deltaRef: 'interanual', invertir: true, serie: A.paro },
           { label: 'Contratos a extranjeros en ' + ult(xs), valor: ult(A.contratos), delta: varPct(ult(A.contratos), pen(A.contratos)), deltaRef: 'interanual', serie: A.contratos },
-          { label: 'Peso en el paro total del municipio', valor: ult(peso), unidad: '%', dec: 1, formato: F.num, serie: peso.filter(function (v) { return v != null; }) },
-          { label: 'Parados por cada 100 extranjeros', valor: ult(ratio), dec: 1, formato: F.num, serie: ratio }
         ],
         cards: [
+          {
+            titulo: 'Extranjeros afiliados a la Seguridad Social que trabajan en Marbella', sub: 'Afiliaciones a último día de cada periodo · trimestral hasta 2021 y mensual después',
+            chips: [CHIP_MENSUAL], fuente: FUENTE_AFIL, ancho: 'full',
+            nota: 'Cuenta a quien trabaja en Marbella, viva donde viva, y solo distingue españoles y extranjeros: el país de nacionalidad no se publica por municipio.',
+            spec: { type: 'area', xType: 'mes', x: AF.x, yFormat: 'num', series: [{ name: 'Afiliados extranjeros', data: AF.marbella_ext }] }
+          },
+          {
+            titulo: 'Peso de los extranjeros entre los afiliados', sub: 'Marbella frente al conjunto de la provincia de Málaga',
+            chips: [CHIP_MENSUAL], fuente: FUENTE_AFIL, ancho: 'full',
+            spec: { type: 'line', xType: 'mes', x: AF.x, yFormat: 'pct', desdeCero: false,
+              series: [{ name: 'Marbella', data: afPct('marbella') }, { name: 'Provincia de Málaga', data: afPct('malaga') }] }
+          },
           {
             titulo: 'Paro registrado de personas extranjeras', sub: 'Demandantes parados a 31 de diciembre',
             chips: [CHIP_ANUAL], fuente: FUENTE_ARGOS,
@@ -286,6 +590,57 @@
             titulo: 'Paro registrado total del municipio', sub: 'Todas las nacionalidades · último día de cada mes',
             chips: [CHIP_MENSUAL], fuente: FUENTE_SEPE, ancho: 'full',
             spec: { type: 'line', xType: 'mes', x: (D.paro_total || {}).x, yFormat: 'num', series: [{ name: 'Paro registrado', data: (D.paro_total || {}).v }] }
+          }
+        ]
+      };
+    }
+  });
+
+  /* ------------------------------------------------- 3b. Visitantes ----- */
+  var TU = D.turismo || { x: [], v: [], ranking: {}, anios_completos: [] };
+  /* Nombres de Dataestur que no coinciden con los del padrón municipal. */
+  var ALIAS_TUR = { 'Estados Unidos de América': 'Estados Unidos' };
+  SECCIONES.push({
+    id: 'visitantes', nombre: 'Visitantes',
+    titulo: 'Turistas internacionales en Marbella',
+    desc: 'Turistas residentes en el extranjero que pasan al menos una noche en Marbella, según la estadística experimental del INE que los estima a partir de la posición de los teléfonos móviles. <b>No son residentes</b>: sirve para ver qué comunidades, además de vivir aquí, visitan la ciudad, y en qué proporción.',
+    render: function () {
+      var anios = TU.anios_completos || [];
+      var aU = anios[anios.length - 1], aP = anios[anios.length - 2];
+      var rk = (TU.ranking || {})[aU] || [];
+      var rkP = {};
+      ((TU.ranking || {})[aP] || []).forEach(function (r) { rkP[r[0]] = r[1]; });
+      var totAnio = function (a) { return TU.x.reduce(function (s, t, i) { return t.slice(0, 4) === a ? s + (TU.v[i] || 0) : s; }, 0); };
+      var padronDe = {};
+      PAISES.forEach(function (p) { padronDe[p.nombre] = p.v[iU]; });
+      var ratio = rk.map(function (r) { var res = padronDe[ALIAS_TUR[r[0]] || r[0]]; return res ? [r[0], +(r[1] / res).toFixed(1)] : null; })
+        .filter(Boolean).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 15);
+      return {
+        kpis: [
+          { label: 'Turistas internacionales en ' + aU, valor: aU ? totAnio(aU) : null, delta: varPct(totAnio(aU), totAnio(aP)), deltaRef: 'vs ' + aP },
+          { label: 'Primer mercado en ' + aU, valor: rk[0] ? rk[0][0] : '—', formato: function (v) { return esc(v); } },
+          { label: 'Turistas de ' + (rk[0] ? rk[0][0] : '—'), valor: rk[0] ? rk[0][1] : null, delta: rk[0] ? varPct(rk[0][1], rkP[rk[0][0]]) : null, deltaRef: 'vs ' + aP },
+          { label: 'Último mes publicado', valor: ult(TU.x), formato: function (v) { return Obs.periodo(v, 'mes'); } }
+        ],
+        cards: [
+          {
+            titulo: 'Turistas internacionales por mes', sub: 'Desde julio de 2019',
+            chips: [CHIP_MENSUAL, CHIP_EXP], fuente: FUENTE_TUR, ancho: 'full',
+            nota: 'La fuente publica con retraso: el último mes disponible es ' + Obs.periodo(ult(TU.x), 'mes') + '.',
+            spec: { type: 'line', xType: 'mes', x: TU.x, yFormat: 'num', series: [{ name: 'Turistas', data: TU.v }] }
+          },
+          {
+            titulo: 'Países de origen de los turistas', sub: 'Turistas en ' + aU + ' · 15 primeros',
+            chips: [CHIP_ANUAL, CHIP_EXP], fuente: FUENTE_TUR, alto: 'tall',
+            spec: { type: 'barh', x: rk.slice(0, 15).map(function (r) { return r[0]; }), yFormat: 'num', xLabel: 'País',
+              series: [{ name: 'Turistas ' + aU, data: rk.slice(0, 15).map(function (r) { return r[1]; }) }] }
+          },
+          {
+            titulo: 'Turistas por cada vecino empadronado de ese país', sub: 'Turistas en ' + aU + ' entre empadronados (padrón municipal ' + P.etiquetas[iU] + ') · entre los 20 primeros mercados',
+            chips: [CHIP_ANUAL, CHIP_INTERNO], fuente: FUENTE_TUR, alto: 'tall',
+            nota: 'Una cifra alta indica una comunidad más de visita que de residencia; una baja, más asentada.',
+            spec: { type: 'barh', x: ratio.map(function (r) { return r[0]; }), yFormat: 'dec1', xLabel: 'País',
+              series: [{ name: 'Turistas por residente', data: ratio.map(function (r) { return r[1]; }) }] }
           }
         ]
       };
@@ -502,6 +857,57 @@
     }
   });
 
+  /* --------------------------------------------- 5b. Contexto provincial -- */
+  var RS = D.residencia || { x: [], tipos: {}, paises: {} };
+  var VV = D.vivienda || { x: [] };
+  SECCIONES.push({
+    id: 'contexto', nombre: 'Provincia',
+    titulo: 'Contexto: provincia de Málaga',
+    desc: 'Dos indicadores que <b>no se publican por municipio</b> y que ayudan a situar a Marbella: las personas extranjeras con documentación de residencia en vigor (Observatorio Permanente de la Inmigración) y el peso de los extranjeros residentes en el dinero que se gasta en comprar vivienda (Ministerio de Vivienda). Son datos de toda la provincia.',
+    render: function () {
+      var T = RS.tipos || {};
+      var ps = Object.keys(RS.paises || {}).filter(function (k) { return k !== 'Otras nacionalidades' && RS.paises[k]; })
+        .sort(function (a, b) { return RS.paises[b] - RS.paises[a]; }).slice(0, 15);
+      var u4 = function (a) { return a && a.length > 4 ? a[a.length - 5] : null; };
+      return {
+        kpis: [
+          { label: 'Con residencia en vigor (' + Obs.periodo(ult(RS.x), 'mes') + ')', valor: ult(T.Total), delta: varPct(ult(T.Total), u4(T.Total)), deltaRef: 'interanual', serie: T.Total },
+          { label: 'Certificado de registro (UE)', valor: ult(T['Certificado de registro']), delta: varPct(ult(T['Certificado de registro']), u4(T['Certificado de registro'])), deltaRef: 'interanual' },
+          { label: 'Autorización de residencia', valor: ult(T['Autorización']), delta: varPct(ult(T['Autorización']), u4(T['Autorización'])), deltaRef: 'interanual' },
+          { label: 'Peso extranjero en el valor de la vivienda', valor: ult(VV.peso_malaga), unidad: '%', dec: 1, formato: F.num, serie: VV.peso_malaga }
+        ],
+        cards: [
+          {
+            titulo: 'Extranjeros con documentación de residencia en vigor', sub: 'Provincia de Málaga, por tipo de documento · último día de cada trimestre',
+            chips: [CHIP_TRIM, CHIP_PROV], fuente: FUENTE_OPI, ancho: 'full',
+            nota: 'Certificado de registro: ciudadanos de la UE y sus familias. TIE-Acuerdo de Retirada: británicos residentes antes del Brexit. Autorización: resto de nacionalidades.',
+            spec: { type: 'stack', xType: 'mes', x: RS.x, yFormat: 'num',
+              series: ['Certificado de registro', 'TIE-Acuerdo de Retirada', 'Autorización'].filter(function (k) { return T[k]; })
+                .map(function (k) { return { name: k, data: T[k] }; }) }
+          },
+          {
+            titulo: 'Nacionalidades con más residentes documentados', sub: 'Provincia de Málaga · ' + Obs.periodo(ult(RS.x), 'mes'),
+            chips: [CHIP_TRIM, CHIP_PROV], fuente: FUENTE_OPI, alto: 'tall',
+            spec: { type: 'barh', x: ps, yFormat: 'num', xLabel: 'Nacionalidad', series: [{ name: 'Personas', data: ps.map(function (k) { return RS.paises[k]; }) }] }
+          },
+          {
+            titulo: 'Peso de los extranjeros residentes en la compra de vivienda', sub: '% del valor de las compraventas de vivienda libre',
+            chips: [CHIP_TRIM, CHIP_PROV], fuente: FUENTE_MIVAU, alto: 'tall',
+            nota: 'Solo extranjeros residentes en España; las compras de no residentes (muy relevantes en Marbella) no se desglosan.',
+            spec: { type: 'line', xType: 'trim', x: VV.x, yFormat: 'pct', desdeCero: false,
+              series: [{ name: 'Provincia de Málaga', data: VV.peso_malaga }, { name: 'España', data: VV.peso_espana }] }
+          },
+          {
+            titulo: 'Precio medio de la vivienda comprada', sub: 'Provincia de Málaga · euros por compraventa de vivienda libre',
+            chips: [CHIP_TRIM, CHIP_PROV], fuente: FUENTE_MIVAU, ancho: 'full',
+            spec: { type: 'line', xType: 'trim', x: VV.x, yFormat: 'eur', desdeCero: false,
+              series: [{ name: 'Extranjeros residentes', data: VV.medio_extr_malaga }, { name: 'Todos los compradores', data: VV.medio_total_malaga }] }
+          }
+        ]
+      };
+    }
+  });
+
   /* ------------------------------------------------- 6. Calidad del dato -- */
   SECCIONES.push({
     id: 'calidad', nombre: 'Calidad del dato',
@@ -517,7 +923,15 @@
         ['Impactos en prensa', no, no, si, 'Concejalía'],
         ['Consultas atendidas (NIE, padrón, ayudas…)', no, no, no, 'No se registran en cifras'],
         ['Población extranjera oficial y por nacionalidad', si, si, si, 'INE (2013–' + (ult(serieLarga.x) || '') + ')'],
-        ['Paro y contratos de extranjeros', si, si, si, 'Argos (2013–' + (ult(A.x) || '') + ')']
+        ['Paro y contratos de extranjeros', si, si, si, 'Argos (2013–' + (ult(A.x) || '') + ')'],
+        ['Nacidos en el extranjero', si, si, si, 'INE (2021–' + (ult(NAC.x) || '') + ')'],
+        ['Extranjeros por sección censal (mapa)', si, si, si, 'INE Censo (2022–' + (ult(SECC.anios) || '') + ') y Atlas de renta (2015–2023)'],
+        ['Llegadas, salidas y saldo migratorio', si, si, no, 'INE (2021–' + (ult(MG.x) || '') + ')'],
+        ['Trabajadores extranjeros afiliados', si, si, si, 'IECA (2012–' + (ult((D.afiliacion || {}).x) || '').slice(0, 4) + ', mensual)'],
+        ['Turistas internacionales por país', si, si, si, 'INE móviles / Dataestur (2019–' + (ult(TU.x) || '').slice(0, 4) + ')'],
+        ['Residencia en vigor y compra de vivienda', si, si, si, 'Solo provincia de Málaga (OPI, Ministerio de Vivienda)'],
+        ['Electores extranjeros inscritos (CERE)', no, no, no, 'No es público: lo tiene el Ayuntamiento'],
+        ['Alumnado extranjero por centro', no, no, no, 'Pedir a la Delegación de Educación']
       ];
       var tabla = '<table class="obs-table ev-tabla"><thead><tr><th>Indicador</th><th>2023</th><th>2024</th><th>2025</th><th>Origen</th></tr></thead><tbody>' +
         cov.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td><td>' + r[4] + '</td></tr>'; }).join('') +
@@ -544,12 +958,12 @@
   /* ----------------------------------------------------------- Arranque -- */
   Obs.init({
     titulo: 'Observatorio de Extranjeros Residentes · Marbella',
-    subtitulo: 'Concejalía de Extranjeros Residentes · población, distritos, empleo y actividad',
+    subtitulo: 'Concejalía de Extranjeros Residentes · población, barrios, movimientos, empleo y actividad',
     secciones: SECCIONES,
     actualizado: (D.meta || {}).actualizado,
     icono: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
-    fuentes: [FUENTE_CENSO, FUENTE_DPOP, FUENTE_ARGOS, FUENTE_SEPE, FUENTE_CONC],
-    metodologia: 'Las fuentes públicas (INE, Argos, SEPE) las descarga cada mes un proceso automático (<code>pipeline/build_data.py</code>). ' +
+    fuentes: [FUENTE_CENSO, FUENTE_NAC, FUENTE_SEC, FUENTE_ADRH, FUENTE_MIG, FUENTE_MAT, FUENTE_DPOP, FUENTE_AFIL, FUENTE_ARGOS, FUENTE_SEPE, FUENTE_TUR, FUENTE_OPI, FUENTE_MIVAU, FUENTE_CONC],
+    metodologia: 'Las fuentes públicas (INE, IECA, Argos, SEPE, Dataestur, OPI y Ministerio de Vivienda) las descarga cada mes un proceso automático (<code>pipeline/build_data.py</code>). ' +
       'Los datos internos de la Concejalía (padrón municipal por país y distrito, voto, eventos y prensa) se transcriben de sus informes anuales a <code>data/concejalia.js</code>. ' +
       'Cada tarjeta indica su origen y permite ver los datos en tabla y descargarlos.',
     pie: 'El padrón municipal y el Censo del INE miden cosas distintas y no deben sumarse ni restarse sin decirlo. ' +

@@ -23,7 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sources import ine, sepe, argos                        # noqa: E402
+from sources import ine, sepe, argos, afiliacion, dataestur, opi, mivau   # noqa: E402
 from sources.comun import escribir_js, paso, ok, aviso      # noqa: E402
 
 # ---------------------------------------------------------------- Configuracion
@@ -33,6 +33,13 @@ INE_MUNICIPIO = "29069"
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SALIDA = os.path.join(RAIZ, "data", "data.js")
+
+# Codigos de serie de Tempus3 localizados una vez (secciones censales, pais de
+# nacimiento, migraciones). Buscarlos en cada ejecucion costaria minutos.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "codigos_ine.json"), encoding="utf-8") as _f:
+    CODIGOS = json.load(_f)
+
+PREVIO = None    # data.js vigente; lo rellena main() para las descargas incrementales
 
 # INE - Censo anual de poblacion (op. 463), tabla 66431 "Malaga: poblacion por
 # sexo y pais de nacionalidad (principales paises)". Dato a 1 de enero.
@@ -141,6 +148,108 @@ def recoger():
         fallos.append(f"SEPE paro: {e}")
         aviso(str(e))
 
+    # --- INE: nacidos en el extranjero, migraciones, matrimonios -----------
+    paso("INE - pais de nacimiento, migraciones y matrimonios")
+    nac = {}
+    for nombre, cod in CODIGOS["nacimiento"].items():
+        s = ine.anual(cod)
+        if s["x"]:
+            nac.setdefault("x", s["x"])
+            nac[nombre] = _alinear(s, nac["x"])
+    if nac:
+        datos["nacimiento"] = nac
+        ok(f"pais de nacimiento: {len(nac) - 1} series, {nac['x'][0]}-{nac['x'][-1]}")
+    else:
+        fallos.append("INE pais de nacimiento")
+
+    mig = {}
+    for clave, cod in CODIGOS["migraciones"].items():
+        s = ine.anual(cod)
+        if s["x"]:
+            mig.setdefault("x", s["x"])
+            mig[clave] = _alinear(s, mig["x"])
+    if mig:
+        datos["migraciones"] = mig
+        ok(f"migraciones: {mig['x'][0]}-{mig['x'][-1]}")
+    else:
+        fallos.append("INE migraciones")
+
+    s = ine.anual(CODIGOS["matrimonios_mixtos"])
+    if s["x"]:
+        datos["matrimonios_mixtos"] = s
+        ok(f"matrimonios mixtos: {s['x'][0]}-{s['x'][-1]}")
+
+    # --- INE: secciones censales (Censo anual + Atlas de renta) -------------
+    paso("INE - secciones censales")
+    sec = {}
+    for codsec, c in CODIGOS["secciones_censo"].items():
+        t, e = ine.anual(c.get("tot", "")), ine.anual(c.get("ext", ""))
+        if t["x"] and e["x"]:
+            sec[codsec] = {"x": t["x"], "tot": t["v"], "ext": _alinear(e, t["x"])}
+    adrh = {}
+    for codsec, c in CODIGOS["adrh_espanola"].items():
+        s = ine.anual(c)
+        if s["x"]:
+            adrh.setdefault(codsec, {})["x"] = s["x"]
+            adrh[codsec]["pct_ext"] = [round(100 - v, 1) for v in s["v"]]
+    for codsec, c in CODIGOS["adrh_renta"].items():
+        s = ine.anual(c)
+        if s["x"]:
+            adrh.setdefault(codsec, {})["renta"] = dict(zip(s["x"], s["v"]))
+    if sec:
+        datos["secciones"] = {"censo": sec, "adrh": adrh}
+        ok(f"{len(sec)} secciones del Censo, {len(adrh)} del Atlas de renta")
+    else:
+        fallos.append("INE secciones")
+    s = ine.anual(CODIGOS["adrh_renta_municipio"])
+    if s["x"]:
+        datos["renta_municipio"] = s
+
+    # --- IECA: afiliacion por municipio de trabajo y nacionalidad ----------
+    paso("IECA - afiliaciones de extranjeros (municipio de trabajo)")
+    try:
+        af = afiliacion.serie((PREVIO or {}).get("afiliacion"))
+        datos["afiliacion"] = af
+        ok(f"afiliacion: {af['x'][0]} - {af['x'][-1]}")
+    except Exception as e:                                        # noqa: BLE001
+        fallos.append(f"IECA afiliacion: {e}")
+        aviso(str(e))
+        if (PREVIO or {}).get("afiliacion"):
+            datos["afiliacion"] = PREVIO["afiliacion"]
+
+    # --- Dataestur: turistas internacionales --------------------------------
+    paso("Dataestur - turistas internacionales (INE moviles)")
+    try:
+        tu = dataestur.receptor()
+        datos["turismo"] = tu
+        ok(f"turistas: {tu['x'][0]} - {tu['x'][-1]}")
+    except Exception as e:                                        # noqa: BLE001
+        fallos.append(f"Dataestur: {e}")
+        aviso(str(e))
+        if (PREVIO or {}).get("turismo"):
+            datos["turismo"] = PREVIO["turismo"]
+
+    # --- Contexto provincial ------------------------------------------------
+    paso("OPI - documentacion de residencia en vigor (provincia)")
+    try:
+        datos["residencia"] = opi.residencia()
+        ok(f"residencia: ultima fecha {datos['residencia']['fecha_ultima']}")
+    except Exception as e:                                        # noqa: BLE001
+        fallos.append(f"OPI: {e}")
+        aviso(str(e))
+        if (PREVIO or {}).get("residencia"):
+            datos["residencia"] = PREVIO["residencia"]
+
+    paso("MIVAU - vivienda comprada por extranjeros residentes (provincia)")
+    try:
+        datos["vivienda"] = mivau.vivienda()
+        ok(f"vivienda: {datos['vivienda']['x'][0]} - {datos['vivienda']['x'][-1]}")
+    except Exception as e:                                        # noqa: BLE001
+        fallos.append(f"MIVAU: {e}")
+        aviso(str(e))
+        if (PREVIO or {}).get("vivienda"):
+            datos["vivienda"] = PREVIO["vivienda"]
+
     datos["meta"]["ultimo_censo"] = censo.get("x", [None])[-1]
     datos["meta"]["ultimo_argos"] = (datos.get("argos") or {}).get("x", [None])[-1]
     datos["meta"]["ultimo_paro"] = (datos.get("paro_total") or {}).get("x", [None])[-1]
@@ -175,11 +284,12 @@ def _vigente():
 
 
 def main():
+    global PREVIO
     print(f"== Observatorio de Extranjeros de {MUNICIPIO} - recoleccion ==")
+    previo = PREVIO = _vigente()
     datos, fallos = recoger()
 
     nuevos = _contar_valores(datos)
-    previo = _vigente()
     if previo is not None:
         antes = _contar_valores(previo)
         if antes and nuevos < antes * 0.9:

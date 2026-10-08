@@ -1,2 +1,3 @@
-# PyMuPDF: lectura de los informes anuales de Argos (PDF).
+# PyMuPDF: informes anuales de Argos (PDF). xlrd: Excel .xls del Ministerio de Vivienda.
 pymupdf>=1.24
+xlrd>=2.0
