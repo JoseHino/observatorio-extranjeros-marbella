@@ -1,0 +1,2 @@
+# PyMuPDF: lectura de los informes anuales de Argos (PDF).
+pymupdf>=1.24
